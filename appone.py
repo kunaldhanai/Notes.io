@@ -10,7 +10,7 @@ import re
 app = Flask(__name__)
 
 # MySQL Configuration
-app.config['MYSQL_HOST'] = 'localhost'
+app.config['MYSQL_HOST'] = '127.0.0.1'
 app.config['MYSQL_USER'] = 'root'
 app.config['MYSQL_PASSWORD'] = 'Kunal@8438'
 app.config['MYSQL_DB'] = 'registrationdata'
@@ -46,36 +46,28 @@ def register():
         cursor.close()
 
         return redirect(url_for('login'))
-    
-    
-    
+        
     return render_template('register.html')"""
 
 @app.route('/login', methods=['GET','POST'])
 def login():
     msg = ''
-    """if request.method == 'POST' and 'username' in request.form and 'password' in request.form:
+    if request.method == 'POST' and 'username' in request.form and 'password' in request.form:
     
      username = request.form['username']
      password = request.form['password']
      cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
      cursor.execute('SELECT * FROM accounts WHERE username = %s AND password = %s', (username,password))   
      account = cursor.fetchone()
-    if account:
+     if account and bcrypt.checkpw(password.encode('utf-8'), account['password'].encode('utf-8')):
        session['loggedin'] =True
        session['id'] = account['id']
        session['username'] = account['username']
-       return render_template('index.html', 
+       return render_template('dashboard.html', 
         msg='Logged in successfully!')
-    else: msg ='Incorrect username/password!'"""
+    else: msg ='Incorrect username/password!'
     return render_template('login.html', msg=msg)
 
-@app.route('/logout')
-def logout():
-    session.pop('loggedin', None)
-    session.pop('id', None)
-    session.pop('username', None)
-    return redirect(url_for('login'))
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -100,21 +92,64 @@ def register():
             cursor.execute('INSERT INTO accounts (username, password, email) VALUES("%s", "%s", "%s")', (username, password, email))
             mysql.connection.commit()
             msg = 'You have successfully registered!'
-        
+            cursor.close()
+
+            session['loggedin']=True
+            session['username']=username
+            return redirect(url_for('dashboard'))
     return render_template('register.html', msg=msg)        
 
 @app.route('/dashboard')
 def dashboard():
-    return render_template('dashboard.html')
+    if 'loggedin' in session:
+        cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cursor.execute("SELECT filename, subject FROM files")
+        files = cursor.fetchall()
+        cursor.close()
+        return render_template('dashboard.html', username=session['username'], files=files)
+    else:
+        return redirect(url_for('login'))
 
 
 
+@app.route('/logout')
+def logout():
+    session.pop('loggedin', None)
+    session.pop('id', None)
+    session.pop('username', None)
+    return redirect(url_for('login'))
 
-
-
-
-
-
+@app.route('/test_db')
+def test_db():
+    try:
+        cursor = mysql.connection.cursor()
+        cursor.execute('SELECT DATABASE()')
+        db_name = cursor.fetchone()
+        return f"Connected to Database: {db_name}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+    
+@app.route('/upload', methods=['GET', 'POST'])
+def upload():
+    if request.method == 'POST':
+        uploaded_file = request.files['file']
+        subject = request.form['subject']
+        
+        if uploaded_file.filename != '':
+            # Save the file to a specific directory
+            filepath = f"uploads/{uploaded_file.filename}"
+            uploaded_file.save(filepath)
+            
+            # Store file details and subject in the database
+            cursor = mysql.connection.cursor()
+            cursor.execute("INSERT INTO files (filename, filepath, subject) VALUES (%s, %s, %s)", 
+                           (uploaded_file.filename, filepath, subject))
+            mysql.connection.commit()
+            cursor.close()
+            
+        return redirect(url_for('dashboard'))
+    
+    return render_template('upload.html')
 
 
 
